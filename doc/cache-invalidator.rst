@@ -195,6 +195,9 @@ implements ``\Psr\Log\LoggerInterface``. For instance, when using Monolog_::
 Then add the logger as a subscriber to the cache invalidator::
 
     use FOS\HttpCache\EventListener\LogSubscriber;
+    use FOS\HttpCache\CacheInvalidator;
+    
+    $invalidator = new CacheInvalidator(
 
     $subscriber = new LogSubscriber($monolog);
     $cacheInvalidator->getEventDispatcher()->addSubscriber($subscriber);
