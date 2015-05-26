@@ -12,8 +12,10 @@
 namespace FOS\HttpCache\ProxyClient\Request;
 
 use FOS\HttpCache\Exception\InvalidUrlException;
-use Ivory\HttpAdapter\Message\Request;
-use Ivory\HttpAdapter\Message\RequestInterface;
+use Http\Message\MessageFactory;
+use GuzzleHttp\Psr7\Request;
+use Psr\Http\Message\RequestInterface;
+use Http\Adapter\Common\Message\MessageFactory as DefaultMessageFactory;
 
 /**
  * A queue of requests to be sent to the HTTP caching server
@@ -30,8 +32,10 @@ class RequestQueue implements \Countable
      */
     private $queue = array();
     
-    public function __construct(array $servers, $baseUrl = null)
-    {
+    public function __construct(
+        array $servers,
+        $baseUrl = null
+    ) {
         $this->setServers($servers);
         $this->setBaseUrl($baseUrl);
     }
@@ -73,9 +77,8 @@ class RequestQueue implements \Countable
 
             foreach ($this->servers as $server) {
                 $request = new Request(
-                    $this->combineUrls($server, $queuedRequest->getUrl()),
                     $queuedRequest->getMethod(),
-                    null,
+                    $this->combineUrls($server, $queuedRequest->getUrl()),
                     $headers
                 );
                 

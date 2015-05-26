@@ -20,16 +20,24 @@
             "homepage": "https://github.com/friendsofsymfony/FOSHttpCache/contributors"
         }
     ],
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/ddeboer/guzzle6-adapter"
+        }
+    ],
     "require": {
         "php": ">=5.4.8",
-        "php": ">=5.3.3",
-        "guzzle/guzzle": "~3.8",
         "symfony/event-dispatcher": "~2.3",
-        "symfony/options-resolver": "~2.3"
+        "symfony/options-resolver": "~2.3",
+        "php-http/adapter": "dev-internal_separation",
+        "guzzlehttp/psr7": "~1.0"
     },
     "require-dev": {
         "mockery/mockery": "~0.9.1",
         "monolog/monolog": "~1.0",
+        "php-http/adapter-core": "dev-internal_separation",
+        "php-http/guzzle6-adapter": "dev-implementation",
         "symfony/process": "~2.3",
         "symfony/http-kernel": "~2.3"
     },
@@ -46,5 +54,7 @@
         "branch-alias": {
             "dev-master": "1.3.x-dev"
         }
-    }
+    },
+    "minimum-stability": "dev",
+    "prefer-stable": true
 }

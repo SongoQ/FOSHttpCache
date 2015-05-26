@@ -13,8 +13,12 @@ namespace FOS\HttpCache\Test;
 
 use FOS\HttpCache\Test\PHPUnit\IsCacheHitConstraint;
 use FOS\HttpCache\Test\PHPUnit\IsCacheMissConstraint;
-use Guzzle\Http\Client;
-use Guzzle\Http\Message\Response;
+use GuzzleHttp\Client;
+use GuzzleHttp\Cookie\CookieJar;
+use GuzzleHttp\Handler\CurlMultiHandler;
+use GuzzleHttp\Handler\StreamHandler;
+use GuzzleHttp\Psr7\Request;
+use Psr\Http\Message\ResponseInterface;
 
 /**
  * Abstract caching proxy test case
@@ -32,10 +36,10 @@ abstract class ProxyTestCase extends \PHPUnit_Framework_TestCase
     /**
      * Assert a cache miss
      *
-     * @param Response $response
-     * @param string   $message  Test failure message (optional)
+     * @param ResponseInterface $response
+     * @param string            $message  Test failure message (optional)
      */
-    public function assertMiss(Response $response, $message = null)
+    public function assertMiss(ResponseInterface $response, $message = null)
     {
         self::assertThat($response, self::isCacheMiss(), $message);
     }
@@ -43,10 +47,10 @@ abstract class ProxyTestCase extends \PHPUnit_Framework_TestCase
     /**
      * Assert a cache hit
      *
-     * @param Response $response
-     * @param string   $message  Test failure message (optional)
+     * @param ResponseInterface $response
+     * @param string            $message  Test failure message (optional)
      */
-    public function assertHit(Response $response, $message = null)
+    public function assertHit(ResponseInterface $response, $message = null)
     {
         self::assertThat($response, self::isCacheHit(), $message);
     }
@@ -68,11 +72,21 @@ abstract class ProxyTestCase extends \PHPUnit_Framework_TestCase
      * @param array  $headers
      * @param array  $options
      *
-     * @return Response
+     * @return ResponseInterface
      */
-    public function getResponse($url, array $headers = array(), $options = array())
+    public function getResponse($url, array $headers = [], $options = [])
     {
-        return $this->getHttpClient()->get($url, $headers, $options)->send();
+        // cURL connection re-use causes response headers for different requests
+        // to be confused.
+        $options['curl'][CURLOPT_FORBID_REUSE] = true;
+        
+        if (isset($options['cookies'])) {
+            $cookies = $options['cookies'];
+            $options['cookies'] = CookieJar::fromArray($cookies, $this->getHostName());
+        }
+        $request = new Request('GET', $url, $headers);
+        
+        return $this->getHttpClient()->send($request, $options);
     }
 
     /**
@@ -83,10 +97,11 @@ abstract class ProxyTestCase extends \PHPUnit_Framework_TestCase
     public function getHttpClient()
     {
         if (null === $this->httpClient) {
-            $this->httpClient = new Client(
-                'http://' . $this->getHostName() . ':' . $this->getCachingProxyPort(),
-                array('curl.options' => array(CURLOPT_FORBID_REUSE => true))
-            );
+            $this->httpClient = new Client([
+                'base_uri' => 'http://' . $this->getHostName() . ':' . $this->getCachingProxyPort(),
+                'defaults' => ['curl' => [CURLOPT_FORBID_REUSE => true]]
+//                'handler' => new StreamHandler()
+            ]);
         }
 
         return $this->httpClient;

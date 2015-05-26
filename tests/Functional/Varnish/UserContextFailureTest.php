@@ -12,8 +12,9 @@
 namespace FOS\HttpCache\Tests\Functional\Varnish;
 
 use FOS\HttpCache\Test\VarnishTestCase;
-use Guzzle\Http\Exception\ClientErrorResponseException;
-use Guzzle\Http\Exception\ServerErrorResponseException;
+use GuzzleHttp\Cookie\CookieJar;
+use GuzzleHttp\Exception\ClientException;
+use GuzzleHttp\Exception\ServerException;
 
 /**
  * Test edge conditions and attacks.
@@ -45,7 +46,7 @@ class UserContextFailureTest extends VarnishTestCase
             );
 
             $this->fail("Request should have failed with a 400 response.\n\n" . $response->getRawHeaders() . "\n" . $response->getBody(true));
-        } catch (ClientErrorResponseException $e) {
+        } catch (ClientException $e) {
             $this->assertEquals(400, $e->getResponse()->getStatusCode());
             $this->assertFalse($e->getResponse()->hasHeader('X-User-Context-Hash'));
         }
@@ -64,7 +65,7 @@ class UserContextFailureTest extends VarnishTestCase
             );
 
             $this->fail("Request should have failed with a 400 response.\n\n" . $response->getRawHeaders() . "\n" . $response->getBody(true));
-        } catch (ClientErrorResponseException $e) {
+        } catch (ClientException $e) {
             $this->assertEquals(400, $e->getResponse()->getStatusCode());
         }
     }
@@ -78,12 +79,13 @@ class UserContextFailureTest extends VarnishTestCase
         $this->getResponse('/user_context.php', array(), array('cookies' => array('foo')));
 
         //Second request in head or post
-        $postResponse = $this->getHttpClient()
-            ->post('/user_context.php', array(), null, array('cookies' => array('foo')))
-            ->send();
+        $postResponse = $this->getHttpClient()->post(
+            '/user_context.php',
+            ['cookies' => CookieJar::fromArray(['foo'], $this->getHostName())]
+        );
 
         $this->assertEquals('POST', $postResponse->getBody(true));
-        $this->assertEquals('MISS', $postResponse->getHeader('X-HashCache'));
+        $this->assertEquals('MISS', $postResponse->getHeaderLine('X-HashCache'));
         $this->assertMiss($postResponse);
     }
 
@@ -93,7 +95,7 @@ class UserContextFailureTest extends VarnishTestCase
             $response = $this->getResponse('/user_context.php', array(), array('cookies' => array('foo')));
 
             $this->fail("Request should have failed with a 500 response.\n\n" . $response->getRawHeaders() . "\n" . $response->getBody(true));
-        } catch (ServerErrorResponseException $e) {
+        } catch (ServerException $e) {
             $this->assertEquals(503, $e->getResponse()->getStatusCode());
         }
     }

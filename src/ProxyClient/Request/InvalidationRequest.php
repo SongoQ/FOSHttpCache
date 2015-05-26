@@ -11,11 +11,15 @@
 
 namespace FOS\HttpCache\ProxyClient\Request;
 
+use Psr\Http\Message\RequestInterface;
+
 /**
  * A request to the HTTP caching server
  */
 class InvalidationRequest
 {
+    
+    
     private $method;
     private $url;
     private $headers;

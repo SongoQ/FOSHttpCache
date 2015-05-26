@@ -13,7 +13,7 @@ namespace FOS\HttpCache\ProxyClient;
 
 use FOS\HttpCache\ProxyClient\Invalidation\PurgeInterface;
 use FOS\HttpCache\ProxyClient\Invalidation\RefreshInterface;
-use Guzzle\Http\ClientInterface;
+use Http\Adapter\PsrHttpAdapter;
 
 /**
  * NGINX HTTP cache invalidator.
@@ -46,7 +46,7 @@ class Nginx extends AbstractProxyClient implements PurgeInterface, RefreshInterf
      *                                       if you purge relative URLs and the domain
      *                                       is not part of your `proxy_cache_key`
      * @param string          $purgeLocation Path that triggers purge (optional).
-     * @param ClientInterface $client        HTTP client (optional). If no HTTP client
+     * @param PsrHttpAdapter  $adapter       HTTP client (optional). If no HTTP client
      *                                       is supplied, a default one will be
      *                                       created.
      */
@@ -54,10 +54,10 @@ class Nginx extends AbstractProxyClient implements PurgeInterface, RefreshInterf
         array $servers,
         $baseUrl = null,
         $purgeLocation = '',
-        ClientInterface $client = null
+        PsrHttpAdapter $adapter = null
     ) {
         $this->purgeLocation = (string) $purgeLocation;
-        parent::__construct($servers, $baseUrl, $client);
+        parent::__construct($servers, $baseUrl, $adapter);
     }
 
     /**
@@ -109,7 +109,7 @@ class Nginx extends AbstractProxyClient implements PurgeInterface, RefreshInterf
             $pathStartAt = strpos($url, $urlParts['path']);
             $purgeUrl = substr($url, 0, $pathStartAt).$this->purgeLocation.substr($url, $pathStartAt);
         } else {
-            $purgeUrl = $this->getBaseUrl().$this->purgeLocation.$url;
+            $purgeUrl = $this->purgeLocation.$url;
         }
 
         return $purgeUrl;

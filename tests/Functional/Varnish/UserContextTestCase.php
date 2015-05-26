@@ -12,7 +12,9 @@
 namespace FOS\HttpCache\Tests\Functional\Varnish;
 
 use FOS\HttpCache\Test\VarnishTestCase;
-use Guzzle\Http\Exception\ClientErrorResponseException;
+use GuzzleHttp\Client;
+use GuzzleHttp\Cookie\CookieJar;
+use GuzzleHttp\Exception\ClientException;
 
 /**
  * @group webserver
@@ -34,37 +36,39 @@ abstract class UserContextTestCase extends VarnishTestCase
     public function testUserContextHash()
     {
         $response1 = $this->getResponse('/user_context.php', array(), array('cookies' => array('foo')));
-        $this->assertEquals('foo', $response1->getBody(true));
-        $this->assertEquals('MISS', $response1->getHeader('X-HashCache'));
+        $this->assertEquals('foo', (string) $response1->getBody());
+        $this->assertEquals('MISS', $response1->getHeaderLine('X-HashCache'));
 
         $response2 = $this->getResponse('/user_context.php', array(), array('cookies' => array('bar')));
-        $this->assertEquals('bar', $response2->getBody(true));
-        $this->assertEquals('MISS', $response2->getHeader('X-HashCache'));
+        $this->assertEquals('bar', (string) $response2->getBody());
+        $this->assertEquals('MISS', $response2->getHeaderLine('X-HashCache'));
 
         $cachedResponse1 = $this->getResponse('/user_context.php', array(), array('cookies' => array('foo')));
-        $this->assertEquals('foo', $cachedResponse1->getBody(true));
-        $this->assertContextCache($cachedResponse1->getHeader('X-HashCache'));
+        $this->assertEquals('foo', (string) $cachedResponse1->getBody());
+        $this->assertContextCache($cachedResponse1->getHeaderLine('X-HashCache'));
         $this->assertHit($cachedResponse1);
 
         $cachedResponse2 = $this->getResponse('/user_context.php', array(), array('cookies' => array('bar')));
-        $this->assertEquals('bar', $cachedResponse2->getBody(true));
-        $this->assertContextCache($cachedResponse2->getHeader('X-HashCache'));
+        $this->assertEquals('bar', $cachedResponse2->getBody());
+        $this->assertContextCache($cachedResponse2->getHeaderLine('X-HashCache'));
         $this->assertHit($cachedResponse2);
 
-        $headResponse1 = $this->getHttpClient()
-            ->head('/user_context.php', array(), array('cookies' => array('foo')))
-            ->send();
+        $headResponse1 = $this->getHttpClient()->head(
+            '/user_context.php',
+            ['cookies' => CookieJar::fromArray(['foo'], $this->getHostName())]
+        );
 
-        $this->assertEquals('foo', $headResponse1->getHeader('X-HashTest'));
-        $this->assertContextCache($headResponse1->getHeader('X-HashCache'));
+        $this->assertEquals('foo', $headResponse1->getHeaderLine('X-HashTest'));
+        $this->assertContextCache($headResponse1->getHeaderLine('X-HashCache'));
         $this->assertHit($headResponse1);
 
-        $headResponse2 = $this->getHttpClient()
-            ->head('/user_context.php', array(), array('cookies' => array('bar')))
-            ->send();
+        $headResponse2 = $this->getHttpClient()->head(
+            '/user_context.php',
+            ['cookies' => CookieJar::fromArray(['bar'], $this->getHostName())]
+        );
 
-        $this->assertEquals('bar', $headResponse2->getHeader('X-HashTest'));
-        $this->assertContextCache($headResponse2->getHeader('X-HashCache'));
+        $this->assertEquals('bar', $headResponse2->getHeaderLine('X-HashTest'));
+        $this->assertContextCache($headResponse2->getHeaderLine('X-HashCache'));
         $this->assertHit($headResponse2);
     }
 
@@ -74,20 +78,20 @@ abstract class UserContextTestCase extends VarnishTestCase
     public function testUserContextNoAuth()
     {
         $response1 = $this->getResponse('/user_context_anon.php');
-        $this->assertEquals('anonymous', $response1->getBody(true));
-        $this->assertEquals('MISS', $response1->getHeader('X-HashCache'));
+        $this->assertEquals('anonymous', $response1->getBody());
+        $this->assertEquals('MISS', $response1->getHeaderLine('X-HashCache'));
 
         $response1 = $this->getResponse('/user_context_anon.php', array(), array('cookies' => array('foo')));
-        $this->assertEquals('foo', $response1->getBody(true));
-        $this->assertEquals('MISS', $response1->getHeader('X-HashCache'));
+        $this->assertEquals('foo', $response1->getBody());
+        $this->assertEquals('MISS', $response1->getHeaderLine('X-HashCache'));
 
         $cachedResponse1 = $this->getResponse('/user_context_anon.php');
-        $this->assertEquals('anonymous', $cachedResponse1->getBody(true));
+        $this->assertEquals('anonymous', $cachedResponse1->getBody());
         $this->assertHit($cachedResponse1);
 
         $cachedResponse1 = $this->getResponse('/user_context_anon.php', array(), array('cookies' => array('foo')));
-        $this->assertEquals('foo', $cachedResponse1->getBody(true));
-        $this->assertContextCache($cachedResponse1->getHeader('X-HashCache'));
+        $this->assertEquals('foo', $cachedResponse1->getBody());
+        $this->assertContextCache($cachedResponse1->getHeaderLine('X-HashCache'));
         $this->assertHit($cachedResponse1);
     }
 
@@ -98,8 +102,7 @@ abstract class UserContextTestCase extends VarnishTestCase
             array('Accept' => 'text/plain'),
             array('cookies' => array('foo'))
         );
-        $this->assertEquals('foo', $response1->getBody(true));
-
+        $this->assertEquals('foo', $response1->getBody());
     }
 
     public function testUserContextUnauthorized()
@@ -108,8 +111,8 @@ abstract class UserContextTestCase extends VarnishTestCase
             $this->getResponse('/user_context.php', array(), array('cookies' => array('miam')));
 
             $this->fail('Request should have failed with a 403 response');
-        } catch (ClientErrorResponseException $e) {
-            $this->assertEquals('MISS', $e->getResponse()->getHeader('X-HashCache'));
+        } catch (ClientException $e) {
+            $this->assertEquals('MISS', $e->getResponse()->getHeaderLine('X-HashCache'));
             $this->assertEquals(403, $e->getResponse()->getStatusCode());
         }
 
@@ -117,8 +120,8 @@ abstract class UserContextTestCase extends VarnishTestCase
             $this->getResponse('/user_context.php', array(), array('cookies' => array('miam')));
 
             $this->fail('Request should have failed with a 403 response');
-        } catch (ClientErrorResponseException $e) {
-            $this->assertContextCache($e->getResponse()->getHeader('X-HashCache'));
+        } catch (ClientException $e) {
+            $this->assertContextCache($e->getResponse()->getHeaderLine('X-HashCache'));
             $this->assertEquals(403, $e->getResponse()->getStatusCode());
         }
     }

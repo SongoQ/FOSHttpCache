@@ -12,12 +12,13 @@
 namespace FOS\HttpCache\ProxyClient;
 
 use FOS\HttpCache\Exception\ExceptionCollection;
+use FOS\HttpCache\Exception\ProxyResponseException;
 use FOS\HttpCache\Exception\ProxyUnreachableException;
 use FOS\HttpCache\ProxyClient\Request\InvalidationRequest;
 use FOS\HttpCache\ProxyClient\Request\RequestQueue;
-use Ivory\HttpAdapter\HttpAdapterFactory;
-use Ivory\HttpAdapter\HttpAdapterInterface;
-use Ivory\HttpAdapter\MultiHttpAdapterException;
+use Http\Adapter\Exception\MultiHttpAdapterException;
+use Http\Adapter\Guzzle6HttpAdapter;
+use Http\Adapter\PsrHttpAdapter;
 
 /**
  * Abstract caching proxy client
@@ -29,7 +30,7 @@ abstract class AbstractProxyClient implements ProxyClientInterface
     /**
      * HTTP client
      *
-     * @var HttpAdapterInterface
+     * @var PsrHttpAdapter
      */
     private $httpAdapter;
 
@@ -51,15 +52,15 @@ abstract class AbstractProxyClient implements ProxyClientInterface
      *                                 requests (optional). This is required if
      *                                 you purge and refresh paths instead of
      *                                 absolute URLs.
-     * @param HttpAdapterInterface $httpAdapter If no HTTP client is supplied, a
+     * @param PsrHttpAdapter $httpAdapter If no HTTP adapter is supplied, a
      *                                 default one will be created.
      */
     public function __construct(
         array $servers,
         $baseUrl = null,
-        HttpAdapterInterface $httpAdapter = null
+        PsrHttpAdapter $httpAdapter = null
     ) {
-        $this->httpAdapter = $httpAdapter ?: HttpAdapterFactory::guess();
+        $this->httpAdapter = $httpAdapter ?: new Guzzle6HttpAdapter();
         $this->initQueue($servers, $baseUrl);
     }
 
@@ -80,20 +81,24 @@ abstract class AbstractProxyClient implements ProxyClientInterface
         } catch (MultiHttpAdapterException $e) {
             $collection = new ExceptionCollection();
             foreach ($e->getExceptions() as $exception) {
-                $collection->add(
-                    ProxyUnreachableException::proxyUnreachable(
-                        $exception->getRequest()->getHeader('Host'),
-                        $exception->getMessage(),
-                        null,
-                        $exception
-                    )
-                );
+                // A workaround for php-http currently lacking differentiation
+                // between client, server and networking errors.
+                if (!$exception->getResponse()) {
+                    // Assume networking error if no response was returned.
+                    $collection->add(
+                        ProxyUnreachableException::proxyUnreachable($exception)
+                    );
+                } else {
+                    $collection->add(
+                        ProxyResponseException::proxyResponse($exception)
+                    );
+                }
             }
 
             throw $collection;
         }
         
-        return count($responses);
+        return count($queue);
     }
     
     protected function queueRequest($method, $url, array $headers = array())

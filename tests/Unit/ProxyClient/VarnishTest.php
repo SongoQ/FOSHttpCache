@@ -13,19 +13,15 @@ namespace FOS\HttpCache\Tests\Unit\ProxyClient;
 
 use FOS\HttpCache\Exception\ExceptionCollection;
 use FOS\HttpCache\ProxyClient\Varnish;
-use FOS\HttpCache\Test\HttpClient\HttpAdapterMock;
-use Guzzle\Http\Exception\MultiTransferException;
-use Guzzle\Http\Message\Request;
-use Ivory\HttpAdapter\HttpAdapterException;
-use Ivory\HttpAdapter\Message\InternalRequest;
-use Ivory\HttpAdapter\MultiHttpAdapterException;
+use FOS\HttpCache\Test\HttpClient\MockHttpAdapter;
+use Http\Adapter\Common\Exception\HttpAdapterException;
 use \Mockery;
-use Psr\Http\Message\OutgoingRequestInterface;
+use Psr\Http\Message\RequestInterface;
 
 class VarnishTest extends \PHPUnit_Framework_TestCase
 {
     /**
-     * @var HttpAdapterMock
+     * @var MockHttpAdapter
      */
     protected $client;
 
@@ -38,10 +34,10 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         $this->assertCount(1, $requests);
         $this->assertEquals('BAN', $requests[0]->getMethod());
 
-        $this->assertEquals('.*', $requests[0]->getHeader('X-Host'));
-        $this->assertEquals('.*', $requests[0]->getHeader('X-Url'));
-        $this->assertEquals('.*', $requests[0]->getHeader('X-Content-Type'));
-        $this->assertEquals('fos.lo', $requests[0]->getHeader('Host'));
+        $this->assertEquals('.*', $requests[0]->getHeaderLine('X-Host'));
+        $this->assertEquals('.*', $requests[0]->getHeaderLine('X-Url'));
+        $this->assertEquals('.*', $requests[0]->getHeaderLine('X-Content-Type'));
+        $this->assertEquals('fos.lo', $requests[0]->getHeaderLine('Host'));
     }
 
     public function testBanEverythingNoBaseUrl()
@@ -53,12 +49,12 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         $this->assertCount(1, $requests);
         $this->assertEquals('BAN', $requests[0]->getMethod());
 
-        $this->assertEquals('.*', $requests[0]->getHeader('X-Host'));
-        $this->assertEquals('.*', $requests[0]->getHeader('X-Url'));
-        $this->assertEquals('.*', $requests[0]->getHeader('X-Content-Type'));
+        $this->assertEquals('.*', $requests[0]->getHeaderLine('X-Host'));
+        $this->assertEquals('.*', $requests[0]->getHeaderLine('X-Url'));
+        $this->assertEquals('.*', $requests[0]->getHeaderLine('X-Content-Type'));
         
         // Ensure host header matches the Varnish server one.
-        $this->assertEquals('http://127.0.0.1:123/', $requests[0]->getUrl());
+        $this->assertEquals('http://127.0.0.1:123/', $requests[0]->getUri());
     }
 
     public function testBanHeaders()
@@ -74,9 +70,9 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         $this->assertCount(1, $requests);
         $this->assertEquals('BAN', $requests[0]->getMethod());
 
-        $this->assertEquals('.*', $requests[0]->getHeader('Test'));
-        $this->assertEquals('B', $requests[0]->getHeader('A'));
-        $this->assertEquals('fos.lo', $requests[0]->getHeader('Host'));
+        $this->assertEquals('.*', $requests[0]->getHeaderLine('Test'));
+        $this->assertEquals('B', $requests[0]->getHeaderLine('A'));
+        $this->assertEquals('fos.lo', $requests[0]->getHeaderLine('Host'));
     }
 
     public function testBanPath()
@@ -90,9 +86,9 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         $this->assertCount(1, $requests);
         $this->assertEquals('BAN', $requests[0]->getMethod());
 
-        $this->assertEquals('^(fos.lo|fos2.lo)$', $requests[0]->getHeader('X-Host'));
-        $this->assertEquals('/articles/.*', $requests[0]->getHeader('X-Url'));
-        $this->assertEquals('text/html', $requests[0]->getHeader('X-Content-Type'));
+        $this->assertEquals('^(fos.lo|fos2.lo)$', $requests[0]->getHeaderLine('X-Host'));
+        $this->assertEquals('/articles/.*', $requests[0]->getHeaderLine('X-Url'));
+        $this->assertEquals('text/html', $requests[0]->getHeaderLine('X-Content-Type'));
     }
 
     /**
@@ -108,33 +104,28 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
 
     public function testPurge()
     {
-        $ips = array(
-            '127.0.0.1:8080',
-            '123.123.123.2',
-        );
-
+        $ips = ['127.0.0.1:8080', '123.123.123.2'];
         $varnish = new Varnish($ips, 'my_hostname.dev', $this->client);
 
         $count = $varnish->purge('/url/one')
             ->purge('/url/two', array('X-Foo' => 'bar'))
             ->flush()
         ;
-        
-        $this->assertEquals(4, $count);
+        $this->assertEquals(2, $count);
         
         $requests = $this->getRequests();
         $this->assertCount(4, $requests);
         foreach ($requests as $request) {
             $this->assertEquals('PURGE', $request->getMethod());
-            $this->assertEquals('my_hostname.dev', $request->getHeader('Host'));
+            $this->assertEquals('my_hostname.dev', $request->getHeaderLine('Host'));
         }
     
-        $this->assertEquals('http://127.0.0.1:8080/url/one', $requests[0]->getUrl());
-        $this->assertEquals('http://123.123.123.2/url/one', $requests[1]->getUrl());
-        $this->assertEquals('http://127.0.0.1:8080/url/two', $requests[2]->getUrl());
-        $this->assertEquals('bar', $requests[2]->getHeader('X-Foo'));
-        $this->assertEquals('http://123.123.123.2/url/two', $requests[3]->getUrl());
-        $this->assertEquals('bar', $requests[3]->getHeader('X-Foo'));
+        $this->assertEquals('http://127.0.0.1:8080/url/one', $requests[0]->getUri());
+        $this->assertEquals('http://123.123.123.2/url/one', $requests[1]->getUri());
+        $this->assertEquals('http://127.0.0.1:8080/url/two', $requests[2]->getUri());
+        $this->assertEquals('bar', $requests[2]->getHeaderLine('X-Foo'));
+        $this->assertEquals('http://123.123.123.2/url/two', $requests[3]->getUri());
+        $this->assertEquals('bar', $requests[3]->getHeaderLine('X-Foo'));
     }
 
     public function testRefresh()
@@ -145,22 +136,43 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         $requests = $this->getRequests();
         $this->assertCount(1, $requests);
         $this->assertEquals('GET', $requests[0]->getMethod());
-        $this->assertEquals('http://127.0.0.1:123/fresh', $requests[0]->getUrl());
+        $this->assertEquals('http://127.0.0.1:123/fresh', $requests[0]->getUri());
     }
 
     public function exceptionProvider()
     {
-        $timeout = HttpAdapterException::timeoutExceeded('http://bla.com/', 60, 'guzzle');
-        $timeout->setRequest(new InternalRequest('http://bla.com/'));
-
-        return array(
-//            array($curlException, '\FOS\HttpCache\Exception\ProxyUnreachableException'),
-            array(
-                $timeout,
+        // Timeout exception (without response)
+        $request = \Mockery::mock('\Psr\Http\Message\RequestInterface')
+            ->shouldReceive('getHeaderLine')
+            ->with('Host')
+            ->andReturn('bla.com')
+            ->getMock()
+        ;
+        $unreachableException = new HttpAdapterException();
+        $unreachableException->setRequest($request);
+        
+        // Client exception (with response)
+        $response = \Mockery::mock('\Psr\Http\Message\ResponseInterface')
+            ->shouldReceive('getStatusCode')->andReturn(500)
+            ->shouldReceive('getReasonPhrase')->andReturn('Uh-oh!')
+            ->getMock()
+        ;
+        $responseException = new HttpAdapterException();
+        $responseException->setRequest($request);
+        $responseException->setResponse($response);
+        
+        return [
+            [
+                $unreachableException,
                 '\FOS\HttpCache\Exception\ProxyUnreachableException',
                 'bla.com'
-            ),
-        );
+            ],
+            [
+                $responseException,
+                '\FOS\HttpCache\Exception\ProxyResponseException',
+                'bla.com'
+            ],
+        ];
     }
 
     /**
@@ -168,13 +180,12 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
      *
      * @param \Exception $exception The exception that curl should throw.
      * @param string     $type      The returned exception class to be expected.
+     * @param string     $message   Optional exception message to match against.
      */
     public function testExceptions(\Exception $exception, $type, $message = null)
     {
-        $this->client->setException(
-            new MultiHttpAdapterException(array($exception))
-        );
-        $varnish = new Varnish(array('127.0.0.1:123'), 'my_hostname.dev', $this->client);
+        $this->client->setException($exception);
+        $varnish = new Varnish(['127.0.0.1:123'], 'my_hostname.dev', $this->client);
         
         $varnish->purge('/');
 
@@ -186,8 +197,8 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
             $this->assertInstanceOf($type, $exceptions->getFirst());
             if ($message) {
                 $this->assertContains(
-                    $exceptions->getFirst()->getMessage(),
-                    $message
+                    $message,
+                    $exceptions->getFirst()->getMessage()
                 );
             }
         }
@@ -196,33 +207,6 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
 
         // Queue must now be empty, so exception above must not be thrown again.
         $varnish->purge('/path')->flush();
-
-        
-        return;
-        // the guzzle mock plugin does not allow arbitrary exceptions
-        // mockery does not provide all methods of the interface
-        $collection = new MultiTransferException();
-        $collection->setExceptions(array($exception));
-        $client = $this->getMock('\Guzzle\Http\ClientInterface');
-        $client->expects($this->any())
-            ->method('createRequest')
-            ->willReturn(new Request('BAN', '/'))
-        ;
-        $client->expects($this->once())
-            ->method('send')
-            ->willThrowException($collection)
-        ;
-
-        $varnish = new Varnish(array('127.0.0.1:123'), 'my_hostname.dev', $client);
-
-        $varnish->ban(array());
-        try {
-            $varnish->flush();
-            $this->fail('Should have aborted with an exception');
-        } catch (ExceptionCollection $exceptions) {
-            $this->assertCount(1, $exceptions);
-            $this->assertInstanceOf($type, $exceptions->getFirst());
-        }
     }
 
     /**
@@ -231,7 +215,7 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
      */
     public function testMissingHostExceptionIsThrown()
     {
-        $varnish = new Varnish(array('127.0.0.1:123'), null, $this->client);
+        $varnish = new Varnish(['127.0.0.1:123'], null, $this->client);
         $varnish->purge('/path/without/hostname');
     }
 
@@ -240,7 +224,7 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         $varnish = new Varnish(array('127.0.0.1'), 'fos.lo', $this->client);
         $varnish->purge('/path')->flush();
         $requests = $this->getRequests();
-        $this->assertEquals('fos.lo', $requests[0]->getHeader('Host'));
+        $this->assertEquals('fos.lo', $requests[0]->getHeaderLine('Host'));
     }
 
     public function testSetBasePathWithPath()
@@ -248,8 +232,8 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         $varnish = new Varnish(array('127.0.0.1'), 'http://fos.lo/my/path', $this->client);
         $varnish->purge('append')->flush();
         $requests = $this->getRequests();
-        $this->assertEquals('fos.lo', $requests[0]->getHeader('Host'));
-        $this->assertEquals('http://127.0.0.1/my/path/append', $requests[0]->getUrl());
+        $this->assertEquals('fos.lo', $requests[0]->getHeaderLine('Host'));
+        $this->assertEquals('http://127.0.0.1/my/path/append', $requests[0]->getUri());
     }
 
     /**
@@ -265,7 +249,7 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         $varnish = new Varnish(array('127.0.0.1'), 'fos.lo', $this->client);
         $varnish->purge('/some/path')->flush();
         $requests = $this->getRequests();
-        $this->assertEquals('http://127.0.0.1/some/path', $requests[0]->getUrl());
+        $this->assertEquals('http://127.0.0.1/some/path', $requests[0]->getUri());
     }
 
     /**
@@ -315,13 +299,13 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
     public function testFlushCountSuccess()
     {
         $self = $this;
-        $client = \Mockery::mock('\Guzzle\Http\Client[send]', array('', null))
-            ->shouldReceive('send')
+        $httpAdapter = \Mockery::mock('\Http\Adapter\HttpAdapter')
+            ->shouldReceive('sendRequests')
             ->once()
             ->with(
                 \Mockery::on(
                     function ($requests) use ($self) {
-                        /** @type Request[] $requests */
+                        /** @type RequestInterface[] $requests */
                         $self->assertCount(4, $requests);
                         foreach ($requests as $request) {
                             $self->assertEquals('PURGE', $request->getMethod());
@@ -333,7 +317,7 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
             )
             ->getMock();
 
-        $varnish = new Varnish(array('127.0.0.1', '127.0.0.2'), 'fos.lo', $client);
+        $varnish = new Varnish(['127.0.0.1', '127.0.0.2'], 'fos.lo', $httpAdapter);
 
         $this->assertEquals(
             2,
@@ -347,13 +331,13 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
     public function testEliminateDuplicates()
     {
         $self = $this;
-        $client = \Mockery::mock('\Guzzle\Http\Client[send]', array('', null))
-            ->shouldReceive('send')
+        $client = \Mockery::mock('\Http\Adapter\HttpAdapter')
+            ->shouldReceive('sendRequests')
             ->once()
             ->with(
                 \Mockery::on(
                     function ($requests) use ($self) {
-                        /** @type Request[] $requests */
+                        /** @type RequestInterface[] $requests */
                         $self->assertCount(4, $requests);
                         foreach ($requests as $request) {
                             $self->assertEquals('PURGE', $request->getMethod());
@@ -378,14 +362,13 @@ class VarnishTest extends \PHPUnit_Framework_TestCase
         );
     }
 
-
     protected function setUp()
     {
-        $this->client = new HttpAdapterMock();
+        $this->client = new MockHttpAdapter();
     }
 
     /**
-     * @return array|OutgoingRequestInterface[]
+     * @return array|RequestInterface[]
      */
     protected function getRequests()
     {

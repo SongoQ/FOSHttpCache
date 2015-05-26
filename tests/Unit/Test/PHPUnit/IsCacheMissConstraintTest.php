@@ -32,7 +32,7 @@ class IsCacheMissConstraintTest extends AbstractCacheConstraintTest
     {
         $response = $this->getResponseMock()
             ->shouldReceive('hasHeader')->with('cache-header')->andReturn(true)
-            ->shouldReceive('getHeader')->with('cache-header')->once()
+            ->shouldReceive('getHeaderLine')->with('cache-header')->once()
             ->andReturn('HIT')
             ->getMock();
 
